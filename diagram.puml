@@ -1,0 +1,623 @@
+@startuml ShopEase_Overall_Class_Diagram
+skinparam linetype ortho
+hide empty members
+left to right direction
+
+' ============================================================
+' MODEL
+' ============================================================
+package "com.shopease.model" {
+  abstract class User {
+    # userId: String
+    # name: String
+    # email: String
+    # password: String
+    # role: String
+    + User(userId, name, email, password, role)
+    + getUserId(): String
+    + getName(): String
+    + getEmail(): String
+    + getPassword(): String
+    + getRole(): String
+  }
+
+  class Customer extends User {
+    + Customer(userId, name, email, password)
+  }
+
+  class Admin extends User {
+    + Admin(userId, name, email, password)
+  }
+
+  class Product {
+    - productId: String
+    - name: String
+    - price: double
+    - stockQuantity: int
+    - category: String
+    + Product(productId, name, price, stockQuantity, category)
+    + getProductId(): String
+    + getName(): String
+    + getPrice(): double
+    + getStockQuantity(): int
+    + setStockQuantity(stockQuantity: int): void
+    + getCategory(): String
+  }
+
+  class CartItem {
+    - product: Product
+    - quantity: int
+    + CartItem(product, quantity)
+    + getProduct(): Product
+    + getQuantity(): int
+    + setQuantity(quantity: int): void
+  }
+
+  class Order {
+    - orderId: String
+    - orderDate: Date
+    - totalAmount: double
+    - status: String
+    - items: List<CartItem>
+    + Order(orderId, totalAmount)
+    + Order(orderId, totalAmount, status, orderDate)
+    + getOrderId(): String
+    + getOrderDate(): Date
+    + getStatus(): String
+    + getTotalAmount(): double
+    + getItems(): List<CartItem>
+    + setStatus(status: String): void
+    + setItems(items: List<CartItem>): void
+  }
+
+  class AdminInventoryLog {
+    - adminId: String
+    - adminName: String
+    - productId: String
+    - productName: String
+    - actionType: String
+    - quantityChange: int
+    - stockBefore: int
+    - stockAfter: int
+    - remarks: String
+    - timestamp: Date
+    + AdminInventoryLog(adminId, adminName, productId, productName, actionType, quantityChange, stockBefore, stockAfter, remarks, timestamp)
+    + getAdminId(): String
+    + getAdminName(): String
+    + getProductId(): String
+    + getProductName(): String
+    + getActionType(): String
+    + getQuantityChange(): int
+    + getStockBefore(): int
+    + getStockAfter(): int
+    + getRemarks(): String
+    + getTimestamp(): Date
+    + getSummaryLine(): String
+  }
+
+  class InventoryStockStatus <<utility>> {
+    + LOW_STOCK_THRESHOLD: int = 5
+    + label(stock: int): String
+    + isOutOfStock(stock: int): boolean
+    + isLowStock(stock: int): boolean
+    + isOk(stock: int): boolean
+  }
+
+  CartItem --> "1" Product
+  Order o-- "0..*" CartItem : items
+}
+
+' ============================================================
+' DAO
+' ============================================================
+package "com.shopease.dao" {
+  class DatabaseConnection <<utility>> {
+    + getConnection(): Connection
+    + initializeDatabase(): void
+  }
+
+  class ProductDAO {
+    + insertProduct(product: Product): void
+    + getAllProducts(): List<Product>
+    + getProductById(productId: String): Product
+    + updateStock(productId: String, newStock: int): void
+  }
+
+  class UserDAO {
+    + insertUser(user: User): boolean
+    + lastInsertErrorKind(user: User): String
+    + getAllUsers(): List<User>
+    + deleteUser(userId: String): boolean
+    + updateUserProfile(userId, name, email, password): boolean
+    + emailUsedByOtherUser(email, excludeUserId): boolean
+    + getUserById(userId: String): User
+    + getUserByEmail(email: String): User
+  }
+
+  class OrderDAO {
+    + nextSequenceForDatePrefix(datePrefix: String): int
+    + insertOrder(order: Order, userId: String): void
+    + getOrdersByUserId(userId: String): List<Order>
+  }
+
+  class WishlistDAO {
+    + add(userId, productId): boolean
+    + remove(userId, productId): boolean
+    + contains(userId, productId): boolean
+    + getProductsForUser(userId, productDAO): List<Product>
+    + getLastKnownStock(userId, productId): int
+    + saveStockSnapshot(userId, productId, stockQuantity): void
+    + clearSnapshotsForUser(userId): void
+  }
+
+  class AdminActivityDAO {
+    + insertLog(log: AdminInventoryLog): void
+    + getLogsForAdmin(adminId: String, limit: int): List<AdminInventoryLog>
+  }
+
+  ProductDAO ..> Product : creates/returns
+  UserDAO ..> User : creates/returns
+  OrderDAO ..> Order
+  OrderDAO ..> CartItem
+  WishlistDAO ..> Product
+  AdminActivityDAO ..> AdminInventoryLog
+  ProductDAO ..> DatabaseConnection : uses
+  UserDAO ..> DatabaseConnection : uses
+  OrderDAO ..> DatabaseConnection : uses
+  WishlistDAO ..> DatabaseConnection : uses
+  AdminActivityDAO ..> DatabaseConnection : uses
+}
+
+' ============================================================
+' SINGLETON
+' ============================================================
+package "com.shopease.singleton" {
+  class ShopEaseDatabaseManager {
+    - instance: ShopEaseDatabaseManager
+    - DB_PATH: String
+    - URL: String
+    - ShopEaseDatabaseManager()
+    + getInstance(): ShopEaseDatabaseManager
+    + getConnection(): Connection
+    + initializeDatabase(): void
+  }
+
+  class ShopEaseCartSingleton {
+    - instances: Map<String, ShopEaseCartSingleton>
+    - userId: String
+    - items: List<CartItem>
+    - ShopEaseCartSingleton(userId: String)
+    + getInstance(userId: String): ShopEaseCartSingleton
+    + addItem(item: CartItem): void
+    + getItems(): List<CartItem>
+    + getUserId(): String
+  }
+
+  class ShopEaseWishlistSingleton {
+    - instances: Map<String, ShopEaseWishlistSingleton>
+    - userId: String
+    - ShopEaseWishlistSingleton(userId: String)
+    + getInstance(userId: String): ShopEaseWishlistSingleton
+    + getUserId(): String
+    + add(dao: WishlistDAO, productId: String): boolean
+    + remove(dao: WishlistDAO, productId: String): boolean
+    + contains(dao: WishlistDAO, productId: String): boolean
+    + getProducts(dao: WishlistDAO, productDAO: ProductDAO): List<Product>
+  }
+
+  ShopEaseCartSingleton o-- "0..*" CartItem
+  ShopEaseWishlistSingleton ..> WishlistDAO : delegates
+  ShopEaseWishlistSingleton ..> ProductDAO : delegates
+}
+
+DatabaseConnection ..> ShopEaseDatabaseManager : delegates
+
+' ============================================================
+' OBSERVER (GoF Observer, pull model)
+' ============================================================
+package "com.shopease.observer" {
+  interface Observer {
+    + update(): void
+  }
+
+  abstract class Subject {
+    - observers: List<Observer>
+    + attach(observer: Observer): void
+    + detach(observer: Observer): void
+    # notifyObservers(): void
+    + getState(): SubjectState
+  }
+
+  class SubjectState {
+    - EMPTY: SubjectState
+    - event: String
+    - productName: String
+    - stockQuantity: int
+    + SubjectState(event, productName, stockQuantity)
+    + empty(): SubjectState
+    + getEvent(): String
+    + getProductName(): String
+    + getStockQuantity(): int
+  }
+
+  class ShopEaseAppEvents <<utility>> {
+    + DATA_CHANGED: String
+    + LOW_STOCK: String
+    + OUT_OF_STOCK: String
+    + ADMIN_LOGIN_STOCK: String
+    + CART_REMINDER: String
+    + WISHLIST_RESTOCK: String
+  }
+
+  class ShopEaseInventorySubject extends Subject {
+    - subjectState: SubjectState
+    - stock: int
+    + getState(): SubjectState
+    + publishEvent(event: String, detail: String): void
+    + setStock(qty: int, productName: String): void
+  }
+
+  abstract class ShopEaseAbstractObserver implements Observer {
+    # subject: Subject
+    ~ bindSubject(subject: Subject): void
+    + update(): void
+    # onStateChanged(state: SubjectState): void
+  }
+
+  class ShopEaseInventoryAdminLogObserver extends ShopEaseAbstractObserver {
+    # onStateChanged(state: SubjectState): void
+  }
+  class ShopEaseInventoryAdminAlertObserver extends ShopEaseAbstractObserver {
+    - parent: Component
+    + ShopEaseInventoryAdminAlertObserver(parent: Component)
+    # onStateChanged(state: SubjectState): void
+  }
+  class ShopEaseAdminLoginStockAlertObserver extends ShopEaseAbstractObserver {
+    - parent: Component
+    + ShopEaseAdminLoginStockAlertObserver(parent: Component)
+    # onStateChanged(state: SubjectState): void
+  }
+  class ShopEaseCustomerCartReminderObserver extends ShopEaseAbstractObserver {
+    - parent: Component
+    + ShopEaseCustomerCartReminderObserver(parent: Component)
+    # onStateChanged(state: SubjectState): void
+  }
+  class ShopEaseCustomerWishlistRestockObserver extends ShopEaseAbstractObserver {
+    - parent: Component
+    + ShopEaseCustomerWishlistRestockObserver(parent: Component)
+    # onStateChanged(state: SubjectState): void
+  }
+  class ShopEaseDataChangeRefreshObserver extends ShopEaseAbstractObserver {
+    - onRefresh: Runnable
+    + ShopEaseDataChangeRefreshObserver(onRefresh: Runnable)
+    # onStateChanged(state: SubjectState): void
+  }
+  class ShopEaseCartStockSyncObserver extends ShopEaseAbstractObserver {
+    - cart: ShopEaseCartSingleton
+    + ShopEaseCartStockSyncObserver(cart: ShopEaseCartSingleton)
+    # onStateChanged(state: SubjectState): void
+  }
+
+  Subject o-- "0..*" Observer : observers
+  ShopEaseInventorySubject --> SubjectState : subjectState
+  ShopEaseCartStockSyncObserver --> ShopEaseCartSingleton
+  ShopEaseAbstractObserver --> ShopEaseInventorySubject : subject
+}
+
+' ============================================================
+' STRATEGY (GoF Strategy: payment + inventory action;
+' plus non-GoF-named strategy uses for login/registration/profile/admin-user-mgmt)
+' ============================================================
+package "com.shopease.strategy" {
+  interface ShopEasePaymentStrategy {
+    + algorithmInterface(amount: double): void
+  }
+  class ShopEasePaymentContext {
+    - strategy: ShopEasePaymentStrategy
+    + ShopEasePaymentContext(strategy: ShopEasePaymentStrategy)
+    + setStrategy(strategy: ShopEasePaymentStrategy): void
+    + contextInterface(amount: double): void
+  }
+  class ShopEaseCreditCardStrategy implements ShopEasePaymentStrategy {
+    + algorithmInterface(amount: double): void
+  }
+  class ShopEaseDuitNowStrategy implements ShopEasePaymentStrategy {
+    + algorithmInterface(amount: double): void
+  }
+  class ShopEaseMAEStrategy implements ShopEasePaymentStrategy {
+    + algorithmInterface(amount: double): void
+  }
+  class ShopEaseTNGStrategy implements ShopEasePaymentStrategy {
+    + algorithmInterface(amount: double): void
+  }
+
+  interface ShopEaseInventoryActionStrategy {
+    + algorithmInterface(request: InventoryActionRequest, result: InventoryActionResult): boolean
+  }
+  class ShopEaseInventoryActionContext {
+    - strategy: ShopEaseInventoryActionStrategy
+    + ShopEaseInventoryActionContext(strategy: ShopEaseInventoryActionStrategy)
+    + setStrategy(strategy: ShopEaseInventoryActionStrategy): void
+    + contextInterface(request, result): boolean
+  }
+  class RestockInventoryStrategy implements ShopEaseInventoryActionStrategy {
+    + algorithmInterface(request, result): boolean
+    + adjustStock(request, result, quantityChange, actionType, remarks): boolean
+  }
+  class ReduceInventoryStrategy implements ShopEaseInventoryActionStrategy {
+    + algorithmInterface(request, result): boolean
+  }
+  class UndoInventoryStrategy implements ShopEaseInventoryActionStrategy {
+    + algorithmInterface(request, result): boolean
+  }
+  note bottom of ShopEaseInventoryActionStrategy
+    InventoryActionRequest / InventoryActionResult
+    are static nested DTO classes (request, result)
+    omitted here as separate boxes for clarity.
+  end note
+
+  interface ShopEaseLoginValidationStrategy {
+    + validate(userDAO, email, password, result): boolean
+  }
+  class DefaultLoginValidationStrategy implements ShopEaseLoginValidationStrategy {
+    + validate(userDAO, email, password, result): boolean
+  }
+
+  interface ShopEaseRegisterCustomerStrategy {
+    + register(userDAO, customer, result): boolean
+  }
+  class RegisterCustomerStrategy implements ShopEaseRegisterCustomerStrategy {
+    + register(userDAO, customer, result): boolean
+  }
+
+  interface ShopEaseProfileUpdateStrategy {
+    + update(userDAO, currentUser, name, email, newPassword, result): boolean
+  }
+  class CustomerProfileUpdateStrategy implements ShopEaseProfileUpdateStrategy {
+    + update(userDAO, currentUser, name, email, newPassword, result): boolean
+  }
+
+  interface ShopEaseCreateCustomerStrategy {
+    + create(userDAO, admin, name, email, password, result): boolean
+  }
+  class CreateCustomerUserStrategy implements ShopEaseCreateCustomerStrategy {
+    + create(userDAO, admin, name, email, password, result): boolean
+  }
+
+  interface ShopEaseUpdateCustomerStrategy {
+    + update(userDAO, admin, userId, name, email, password, result): boolean
+  }
+  class UpdateCustomerUserStrategy implements ShopEaseUpdateCustomerStrategy {
+    + update(userDAO, admin, userId, name, email, password, result): boolean
+  }
+
+  interface ShopEaseAdminUserActionStrategy {
+    + execute(userDAO, admin, targetUserId, result): boolean
+  }
+  class DeleteCustomerUserStrategy implements ShopEaseAdminUserActionStrategy {
+    + execute(userDAO, admin, targetUserId, result): boolean
+  }
+
+  ShopEasePaymentContext o-- "1" ShopEasePaymentStrategy
+  ShopEaseInventoryActionContext o-- "1" ShopEaseInventoryActionStrategy
+  RestockInventoryStrategy <.. ReduceInventoryStrategy : calls adjustStock()
+  RestockInventoryStrategy ..> AdminInventoryLog
+  RestockInventoryStrategy ..> ProductDAO
+  RestockInventoryStrategy ..> AdminActivityDAO
+  RestockInventoryStrategy ..> ShopEaseInventorySubject
+  DefaultLoginValidationStrategy ..> UserDAO
+  RegisterCustomerStrategy ..> UserDAO
+  CustomerProfileUpdateStrategy ..> UserDAO
+  CreateCustomerUserStrategy ..> UserDAO
+  UpdateCustomerUserStrategy ..> UserDAO
+  DeleteCustomerUserStrategy ..> UserDAO
+}
+
+' ============================================================
+' SERVICE (orchestration hub)
+' ============================================================
+package "com.shopease.service" {
+  class ShopEaseService {
+    - productDAO: ProductDAO
+    - userDAO: UserDAO
+    - orderDAO: OrderDAO
+    - adminActivityDAO: AdminActivityDAO
+    - wishlistDAO: WishlistDAO
+    - currentUser: User
+    - userCart: ShopEaseCartSingleton
+    - userWishlist: ShopEaseWishlistSingleton
+    - inventorySystem: ShopEaseInventorySubject
+    - profileUpdateStrategy: ShopEaseProfileUpdateStrategy
+    - deleteUserStrategy: ShopEaseAdminUserActionStrategy
+    - createUserStrategy: ShopEaseCreateCustomerStrategy
+    - updateUserStrategy: ShopEaseUpdateCustomerStrategy
+    - registerCustomerStrategy: ShopEaseRegisterCustomerStrategy
+    - loginValidationStrategy: ShopEaseLoginValidationStrategy
+    - restockStrategy: ShopEaseInventoryActionStrategy
+    - reduceStrategy: ShopEaseInventoryActionStrategy
+    - undoStrategy: ShopEaseInventoryActionStrategy
+    - lastMessage: String
+    - lastOrderId: String
+    - lastUndoableStockAction: AdminInventoryLog
+    + ShopEaseService()
+    + login(email: String, password: String): boolean
+    + registerCustomer(customer: User): boolean
+    + getCurrentUser(): User
+    + getLastMessage(): String
+    + getLastOrderId(): String
+    + logout(): void
+    + attachObserver(observer: Observer): void
+    + detachObserver(observer: Observer): void
+    + publishAdminLowStockOnLogin(): void
+    + publishWishlistRestockOnLogin(): void
+    + publishCartReminderIfNeeded(): void
+    + syncCartWithDatabase(): void
+    + getAllProducts(): List<Product>
+    + getOrderHistory(): List<Order>
+    + getProductById(productId: String): Product
+    + updateProductStock(productId, productName, newStock): void
+    + restockProduct(productId: String, amountToAdd: int): boolean
+    + reduceStockProduct(productId: String, amountToReduce: int, remarks: String): boolean
+    + canUndoLastRestock(): boolean
+    + undoLastRestock(): boolean
+    + getAdminActivityHistory(): List<AdminInventoryLog>
+    + getCart(): ShopEaseCartSingleton
+    + addToCart(p: Product, qty: int): boolean
+    + getCartItemCount(): int
+    + getCartTotal(): double
+    + removeFromCart(productId: String): boolean
+    + clearCart(): void
+    + updateCartQuantity(productId: String, qty: int): boolean
+    + checkout(strategy: ShopEasePaymentStrategy): boolean
+    + addToWishlist(productId: String): boolean
+    + removeFromWishlist(productId: String): boolean
+    + isInWishlist(productId: String): boolean
+    + getWishlistProducts(): List<Product>
+    + moveWishlistItemToCart(productId: String, qty: int): boolean
+    + updateCustomerProfile(name, email, newPassword): boolean
+    + getAllUsersForAdmin(): List<User>
+    + getOrdersForUserAsAdmin(userId: String): List<Order>
+    + getWishlistForUserAsAdmin(userId: String): List<Product>
+    + createCustomerAsAdmin(name, email, password): boolean
+    + updateCustomerAsAdmin(userId, name, email, password): boolean
+    + deleteUserAsAdmin(userId: String): boolean
+  }
+
+  ShopEaseService *-- "1" ProductDAO
+  ShopEaseService *-- "1" UserDAO
+  ShopEaseService *-- "1" OrderDAO
+  ShopEaseService *-- "1" AdminActivityDAO
+  ShopEaseService *-- "1" WishlistDAO
+  ShopEaseService o-- "0..1" User : currentUser
+  ShopEaseService o-- "0..1" ShopEaseCartSingleton
+  ShopEaseService o-- "0..1" ShopEaseWishlistSingleton
+  ShopEaseService *-- "1" ShopEaseInventorySubject
+  ShopEaseService *-- ShopEaseProfileUpdateStrategy
+  ShopEaseService *-- ShopEaseAdminUserActionStrategy
+  ShopEaseService *-- ShopEaseCreateCustomerStrategy
+  ShopEaseService *-- ShopEaseUpdateCustomerStrategy
+  ShopEaseService *-- ShopEaseRegisterCustomerStrategy
+  ShopEaseService *-- ShopEaseLoginValidationStrategy
+  ShopEaseService *-- "3" ShopEaseInventoryActionStrategy
+  ShopEaseService ..> ShopEasePaymentStrategy : checkout(strategy)
+  ShopEaseService --> "0..1" AdminInventoryLog : lastUndoableStockAction
+}
+
+' ============================================================
+' UI (Swing presentation layer — internal widgets/listeners
+' omitted for clarity; every class holds a ShopEaseService)
+' ============================================================
+package "com.shopease.ui" {
+  class ShopEaseApp {
+    - authLayout: CardLayout
+    - authContainer: JPanel
+    - loginPanel: LoginPanel
+    - signUpPanel: SignUpPanel
+    - service: ShopEaseService
+    + ShopEaseApp()
+  }
+  class LoginPanel {
+    - service: ShopEaseService
+    + LoginPanel(service, onLoginSuccess: Runnable, onGoToSignUp: Runnable)
+  }
+  class SignUpPanel {
+    - service: ShopEaseService
+    + SignUpPanel(service, onSignUpSuccess: Runnable, onGoToLogin: Runnable)
+  }
+  class CustomerDashboard {
+    - service: ShopEaseService
+    + CustomerDashboard(service, onLogout: Runnable)
+  }
+  class AdminDashboard {
+    - service: ShopEaseService
+    - inventoryPanel: AdminInventoryPanel
+    - usersPanel: AdminUsersPanel
+    + AdminDashboard(service, onLogout: Runnable)
+  }
+  class AdminInventoryPanel {
+    - service: ShopEaseService
+    + AdminInventoryPanel(service: ShopEaseService)
+  }
+  class AdminUsersPanel {
+    - service: ShopEaseService
+    + AdminUsersPanel(service: ShopEaseService)
+  }
+  class CartDialog {
+    - service: ShopEaseService
+    + CartDialog(parent: JFrame, service, onCartChanged: Consumer<String>)
+  }
+  class WishlistDialog {
+    - service: ShopEaseService
+    + WishlistDialog(parent: JFrame, service: ShopEaseService)
+  }
+  class OrderHistoryDialog {
+    - service: ShopEaseService
+    + OrderHistoryDialog(parent: JFrame, service: ShopEaseService)
+  }
+  class ProfileDialog {
+    - service: ShopEaseService
+    + ProfileDialog(parent: JFrame, service, onProfileUpdated: Runnable)
+  }
+  class ReceiptDialog {
+    + ReceiptDialog(parent: JFrame, orderId, customerName, ...)
+  }
+  class ShopEaseUIUtils <<utility>> {
+  }
+  note bottom of ShopEaseUIUtils
+    Shared static Swing styling /
+    formatting helper methods.
+  end note
+
+  ShopEaseApp *-- "1" LoginPanel
+  ShopEaseApp *-- "1" SignUpPanel
+  ShopEaseApp ..> AdminDashboard : creates on admin login
+  ShopEaseApp ..> CustomerDashboard : creates on customer login
+  AdminDashboard *-- "1" AdminInventoryPanel
+  AdminDashboard *-- "1" AdminUsersPanel
+  CustomerDashboard ..> CartDialog : opens
+  CustomerDashboard ..> WishlistDialog : opens
+  CustomerDashboard ..> OrderHistoryDialog : opens
+  CustomerDashboard ..> ProfileDialog : opens
+  CartDialog ..> ReceiptDialog : opens on success
+  CartDialog ..> ShopEasePaymentContext : builds per payment method
+}
+
+ShopEaseApp ..> ShopEaseService : uses
+LoginPanel ..> ShopEaseService : uses
+SignUpPanel ..> ShopEaseService : uses
+CustomerDashboard ..> ShopEaseService : uses
+AdminDashboard ..> ShopEaseService : uses
+AdminInventoryPanel ..> ShopEaseService : uses
+AdminUsersPanel ..> ShopEaseService : uses
+CartDialog ..> ShopEaseService : uses
+WishlistDialog ..> ShopEaseService : uses
+OrderHistoryDialog ..> ShopEaseService : uses
+ProfileDialog ..> ShopEaseService : uses
+
+' ============================================================
+' UTIL
+' ============================================================
+package "com.shopease.util" {
+  class CustomerIdGenerator <<utility>> {
+    - SEQ: AtomicInteger
+    + nextId(): String
+  }
+  class OrderIdGenerator <<utility>> {
+    - DATE_PREFIX: DateTimeFormatter
+    + nextOrderId(orderDAO: OrderDAO): String
+  }
+  class UserAccountUtils <<utility>> {
+    + normalizeEmail(email: String): String
+    + isValidEmail(email: String): boolean
+  }
+
+  OrderIdGenerator ..> OrderDAO : uses
+}
+
+CreateCustomerUserStrategy ..> CustomerIdGenerator
+RegisterCustomerStrategy ..> CustomerIdGenerator
+CreateCustomerUserStrategy ..> UserAccountUtils
+DefaultLoginValidationStrategy ..> UserAccountUtils
+RegisterCustomerStrategy ..> UserAccountUtils
+
+@enduml
